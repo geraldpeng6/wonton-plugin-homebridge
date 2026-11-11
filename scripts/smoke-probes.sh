@@ -95,8 +95,7 @@ data_write() { # 在 config.json 的 UI 块里写一条带随机标记的字段�
     -H "Authorization: Bearer $token" --data "$new" --fail-with-body)" ||
     { echo "写 config.json 失败：${config:-（无响应）}"; return 1; }
   printf '%s' "$marker" >"$SMOKE_STATE" || { echo "标记写不进 $SMOKE_STATE"; return 1; }
-  echo "已写数据标记：config.json platforms[0].wontonMarker=$marker（写配置会触发 Homebridge 重启，等它回来）"
-  probes_status_wait "$SMOKE_PLUGIN_ID" 20 >/dev/null 2>&1 || true
+  echo "已写数据标记：config.json platforms[0].wontonMarker=$marker"
 }
 
 data_check() { # config.json 里还有那条标记（重装/升级没丢）
