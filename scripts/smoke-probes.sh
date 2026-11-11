@@ -63,6 +63,18 @@ uix_session() { # 凭据文件里没有就建一个并存下；输出 access_tok
   fi
   user="$(jq -er '.user // empty' <<<"$creds")" || { echo "凭据文件 $f 不对"; return 1; }
   pw="$(jq -er '."password" // empty' <<<"$creds")" || { echo "凭据文件 $f 不对"; return 1; }
+  if token="$(uix_token "$user" "$pw")"; then
+    printf '%s' "$token"
+    return 0
+  fi
+  # 登录不上＝凭据是别的实例留下的（冒烟套件的工作区跨次保留，插件数据却是新卷）：
+  # 向导还没完成就按它重建管理员再试一次；向导已完成则如实报错，不猜密码。
+  echo "存的凭据登录不上，重走向导重建管理员" >&2
+  rm -f "$f"
+  creds="$(uix_create_admin)" || return 1
+  printf '%s' "$creds" >"$f" || { echo "凭据写不进 $f"; return 1; }
+  user="$(jq -er '.user // empty' <<<"$creds")" || { echo "凭据文件 $f 不对"; return 1; }
+  pw="$(jq -er '."password" // empty' <<<"$creds")" || { echo "凭据文件 $f 不对"; return 1; }
   uix_token "$user" "$pw"
 }
 
