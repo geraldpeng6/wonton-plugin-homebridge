@@ -17,8 +17,7 @@
   （`GET /api/auth/settings`）。宿主网络服务出网走宿主自己的路由，不经平台出网代理，也不申请
   `network.egress`：镜像首次启动要从 npm 装 Homebridge，UI 里装插件也要 npm 出网。
 - 插件下载走 npm 官方源。上游 config-ui-x 网页没有 npm 源设置，镜像每次启动还会用自带默认覆盖
-  数据目录里的 `.npmrc`；想提供 npmmirror 选项需要核心把设置值注进 compose（`WONTON_SETTING_*`），
-  当前核心还没实现（见 `research.md` 与 PR 说明）。
+  数据目录里的 `.npmrc`，所以没有提供换源选项。
 - 数据（config.json、auth.json、插件 node_modules）在插件数据目录，重装、升级保留。
 
 ## 先跑起来
@@ -38,7 +37,6 @@ scripts/dev.sh install
 | --- | --- |
 | `docker-compose.yml` | 插件本身：compose 加上 `x-wonton` 清单 |
 | `config/config.json` | 首次启动种子的 UI 配置（回环绑定） |
-| `settings.schema.json` | 插件设置（npm 下载源） |
 | `icon.svg` | 插件图标 |
 | `screenshots/` | 商店详情页里的截图 |
 | `scripts/check.sh` | 检查插件包，规则和安装时一样 |

@@ -24,8 +24,7 @@ services:
         condition: service_completed_successfully
     environment:
       TZ: ${TZ}
-      # npm 源用官方默认（npm 默认即 registry.npmjs.org）。想提供 npmmirror 选项需要核心把
-      # settings 值注进 compose（WONTON_SETTING_*），当前核心没实现（见 README/PR）；镜像每次
+      # npm 源保持官方默认（registry.npmjs.org）：上游 config-ui-x 网页没有换源设置，镜像每次
       # 启动还会用自带默认覆盖数据目录里的 .npmrc，改文件没用。
     volumes:
       - ${WONTON_APP_DATA}/homebridge:/homebridge
