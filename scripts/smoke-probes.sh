@@ -66,8 +66,13 @@ uix_session() { # 凭据文件里没有就建一个并存下；输出 access_tok
   uix_token "$user" "$pw"
 }
 
+uix_web_ready() { # 单项跑（dev.sh probes data_check）时 SMOKE_WEB_URL 没人设，自己解析一次
+  [[ -n "${SMOKE_WEB_URL:-}" ]] || probes_web_url "数据" || return 1
+}
+
 identity_check() { # 应用自己的登录认出管理员：登录 + GET /api/users（AdminGuard）里有这个管理员
   local token users
+  uix_web_ready || return 1
   token="$(uix_session)" || return 1
   users="$(web_get /api/users -H "Authorization: Bearer $token" --fail-with-body)" ||
     { echo "GET /api/users 失败：${users:-（无响应）}"; return 1; }
@@ -79,6 +84,7 @@ identity_check() { # 应用自己的登录认出管理员：登录 + GET /api/us
 data_write() { # 在 config.json 的 UI 块里写一条带随机标记的字段（重装/升级后由 data_check 验证）
   local token config new marker
   [[ -n "${SMOKE_STATE:-}" ]] || { echo "SMOKE_STATE 没设"; return 1; }
+  uix_web_ready || return 1
   token="$(uix_session)" || return 1
   marker="wonton$(od -An -N6 -tx1 /dev/urandom | tr -d ' \n')"
   config="$(web_get /api/config-editor -H "Authorization: Bearer $token" --fail-with-body)" ||
@@ -96,6 +102,7 @@ data_write() { # 在 config.json 的 UI 块里写一条带随机标记的字段�
 data_check() { # config.json 里还有那条标记（重装/升级没丢）
   local token config marker
   [[ -n "${SMOKE_STATE:-}" ]] || { echo "SMOKE_STATE 没设"; return 1; }
+  uix_web_ready || return 1
   marker="$(cat "$SMOKE_STATE" 2>/dev/null)" || { echo "读不到 $SMOKE_STATE（data_write 没跑过？）"; return 1; }
   [[ -n "$marker" ]] || { echo "SMOKE_STATE 里没有标记"; return 1; }
   token="$(uix_session)" || return 1
