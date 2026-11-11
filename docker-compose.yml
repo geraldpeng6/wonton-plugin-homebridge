@@ -1,78 +1,106 @@
-# 示例插件：nginx 显示一个网页，向登录的人问好。改成自己的应用见 https://github.com/wontonapp/wonton-docs/blob/main/develop.md#写插件。
+# Homebridge：宿主网络是 HomeKit 的硬要求——iPhone 靠 mDNS 发现桥，桥接网络里广播出不去（上游 README
+# "network_mode: host — Required"）。config-ui-x 网页只监听 127.0.0.1，局域网绕不过网关，核心经回环中继接入。
+# 登录用上游自己的首次设置向导（5.x 无默认账号，auth.json 不存在时向导强制先建管理员）。
 services:
-  web:
-    # 镜像按摘要固定（多架构镜像写清单列表的摘要），标签只给人看。
-    image: nginx:1.31.8-alpine@sha256:713fc2ebfd92e8217db451477182ee91944b123d2b1ee9fd5a8c6e91ca6c3a11
-    environment:
-      # 网关代登录：SSI 回显的 Remote-User 只信核心带来的。官方镜像启动时对 templates 目录里的
-      # *.template 做 envsubst，把下面的地址换进 nginx 配置（见 web/default.conf.template）。
-      WONTON_CORE_ADDRESS: ${WONTON_CORE_ADDRESS}
-    # 包里的文件经 configs 交给容器（核心在启动前写进去），不能用卷挂载。
+  # 一次性：首次启动前种一份 config.json，把 UI 绑到回环。已存在不覆盖（用户在网页里改的就是这一份）。
+  # 不种 bridge 块：hb-service 首次启动时自己生成随机 username/port/PIN（缺什么补什么）。
+  init:
+    image: homebridge/homebridge:2026-11-10@sha256:49e10e19bce69de56b0b77c724f317858dcd32e17cd9f379833660b1af26dbd5
+    entrypoint: ["sh", "-c"]
+    command:
+      - test -f /data/config.json || cp /seed/config.json /data/config.json
+    volumes:
+      - ${WONTON_APP_DATA}/homebridge:/data
     configs:
-      - source: site
-        target: /etc/nginx/templates/default.conf.template
-      - source: page
-        target: /usr/share/nginx/html/index.html
-      - source: tokens
-        target: /usr/share/nginx/html/tokens.css
+      - source: seed-config
+        target: /seed/config.json
+    network_mode: none
+    restart: "no"
+
+  homebridge:
+    image: homebridge/homebridge:2026-11-10@sha256:49e10e19bce69de56b0b77c724f317858dcd32e17cd9f379833660b1af26dbd5
+    depends_on:
+      init:
+        condition: service_completed_successfully
+    environment:
+      TZ: ${TZ}
+      # npm 源用官方默认（npm 默认即 registry.npmjs.org）。想提供 npmmirror 选项需要核心把
+      # settings 值注进 compose（WONTON_SETTING_*），当前核心没实现（见 README/PR）；镜像每次
+      # 启动还会用自带默认覆盖数据目录里的 .npmrc，改文件没用。
+    volumes:
+      - ${WONTON_APP_DATA}/homebridge:/homebridge
+    # 上游要求宿主网络：HomeKit 桥和 mDNS 广播（镜像内置 avahi）。出网走宿主自己的路由，
+    # 不经平台出网代理，也不申请 network.egress。
+    network_mode: host
+    # 宿主网络的 webui 必须写健康检查（规范硬要求）；查 /api/auth/settings 是 API 真答话，
+    # config.json 载入成功才 200，不是只看进程活着。
     healthcheck:
-      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/healthz"]
+      test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1:8581/api/auth/settings"]
       interval: 30s
-      timeout: 5s
-      start_period: 30s
-      start_interval: 1s
+      timeout: 10s
+      start_period: 180s
+      start_interval: 5s
 
 configs:
-  site:
-    file: web/default.conf.template
-  page:
-    file: web/index.html
-  tokens:
-    file: web/tokens.css
+  seed-config:
+    file: config/config.json
 
 x-wonton:
-  spec: "0.6"
-  # 换成你自己的：反向域名形式，装上以后不能改。
-  id: app.example.hello
-  version: 0.1.1
+  spec: "0.12"
+  # 反向域名：上游官网 homebridge.io。
+  id: io.homebridge.homebridge
+  version: 0.1.0
   kind: app
-  title: { zh: 你好, en: Hello }
-  description: { zh: 向登录的人问好的示例网页, en: An example page that greets whoever is signed in }
+  title: { zh: 家庭桥接器（Homebridge）, en: Homebridge }
+  description:
+    zh: 把米家、涂鸦这些不直接支持苹果"家庭"App 的智能设备接进"家庭"App，像请了个翻译把各家设备的话翻给 iPhone 听。装好后在插件网页里装对应设备的接入插件，再用手机扫码配对。
+    en: Connect smart-home devices that don't support Apple Home (Mi Home, Tuya, …) to the Apple Home app and Siri — like a translator between your gadgets and your iPhone. Install a device plugin in the web UI, then pair from the Home app.
   icon: icon.svg
   notices: [NOTICE]
-  screenshots: [screenshots/home.png]
-  author: { name: Example }
-  homepage: https://nginx.org
-  # 应用（这里是 nginx）的许可证；插件包自己的许可证写在仓库的 LICENSE 里。
-  license: BSD-2-Clause
+  screenshots: [screenshots/wizard.png]
+  author: { name: geraldpeng6, url: https://github.com/geraldpeng6 }
+  homepage: https://homebridge.io
+  # 上游 Homebridge 的许可证；插件包自己的许可证写在仓库的 LICENSE 里。
+  license: Apache-2.0
   tags:
-    zh: [工具]
-    en: [Tools]
+    zh: [智能家居, Siri]
+    en: [Home, Siri]
   about:
     zh: |
-      一个示例网页：登录以后，页面会向你问好。新建插件时可以照着改。
+      在家里跑一个 Homebridge 桥：不支持 HomeKit 的设备（米家、涂鸦等）装上对应的接入插件后，
+      会出现在苹果"家庭"App 里，能用 Siri 和自动化控制，和原生支持 HomeKit 的设备放在同一个家里。
+
+      装好后打开插件网页，按首次设置向导创建管理员账号；在网页的"插件"页里搜索安装设备插件
+      （比如 homebridge-mi-hygrothermograph、homebridge-tuya 之类），配好后在"家庭"App 里
+      用网页上显示的配对码添加桥。
+
+      网页只监听本机回环，经云吞网关访问，局域网绕不过登录；HomeKit 桥端口和设备发现走宿主网络，
+      同一局域网里的 iPhone 才能配对和控制，这是 HomeKit 的工作方式（mDNS 广播）。
     en: |
-      An example page: once you are signed in, the page says hello. Copy it as a starting point for a new plugin.
-  release_notes: { zh: 名字和说明更新。, en: Product name and description update. }
+      Runs a Homebridge bridge at home: devices without HomeKit support (Mi Home, Tuya, …) show up
+      in the Apple Home app once you install their plugins, so you can control them with Siri and
+      automations alongside native HomeKit accessories.
+
+      After install, open the plugin's web page and create the admin account in the first-run wizard;
+      search and install device plugins in the Plugins tab (homebridge-mi-hygrothermograph,
+      homebridge-tuya, …), then add the bridge in the Home app with the pairing code shown in the UI.
+
+      The web UI listens on loopback only and is reached through the Wonton gateway, so the LAN cannot
+      bypass its login. The HomeKit bridge port and device discovery use host networking so iPhones on
+      the same LAN can pair and control — that is how HomeKit works (mDNS).
+  release_notes: { zh: 第一版。, en: First release. }
+  setup:
+    zh: 装好后打开插件网页，按首次设置向导创建管理员账号，再在网页里安装你设备对应的接入插件。
+    en: Open the plugin's web page after install, create the admin account in the first-run wizard, then install a plugin for your devices in the web UI.
   webui:
-    service: web
-    port: 80
-    # 示例页回显网关注入的用户名，见 https://github.com/wontonapp/wonton-docs/blob/main/plugin-spec.md#网关代登录sso-proxy。
-    sso: proxy
-    proxy:
-      headers:
-        Remote-User: "{user}"
-  # 能放进侧边栏“我的应用”的页面，见 https://github.com/wontonapp/wonton-docs/blob/main/plugin-spec.md#应用页面tabs。放不放由用户决定。
-  tabs:
-    - id: home
-      title: { zh: 主页, en: Home }
-      icon: tabs/home.svg
-      icon_selected: tabs/home-fill.svg
-      path: /
-      # 这个页面没做适配，用默认的 inset：从状态栏下沿开始，页面不用管安全区。
-      # 想让内容从状态栏后面滚过，写 layout: edge-to-edge，并用 --wonton-inset-* 留出系统安全区的位置。
-  permissions: []
-  # 上游 nginx 官方镜像，amd64 和 arm64 都有；上游没写最低内存，按本机空闲实测取整（实测约 24M，取 64M）。
+    service: homebridge
+    port: 8581
+    # 上游有自己的登录和首次设置向导（建管理员），不需要也不支持代登录。
+    sso: none
+  permissions:
+    # HomeKit 靠 mDNS 广播和本机桥接端口，必须用宿主网络（上游官方要求）。
+    - network.host
   requirements:
     arch: [amd64, arm64]
-    memory: 64M
+    # 上游没写最低内存；按本机实测取整（Homebridge 2.5.0 + UI 5.30.0 空载 RSS 约 2xx MB，见 PR 验证记录）。
+    memory: 512M
